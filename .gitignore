@@ -1,0 +1,28 @@
+# Dependencias
+# Ignora la carpeta de módulos de Node
+node_modules/
+
+# Archivos de build
+# Ignora la carpeta 'build' que especificaste en vite.config.ts
+build/
+# Ignora 'dist' (es el default de Vite, por si acaso)
+dist/
+
+# Archivos de entorno
+# Nunca subas contraseñas o claves de API
+.env
+.env.local
+.env.*.local
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Archivos de sistema operativo (macOS y Windows)
+.DS_Store
+Thumbs.db
+
+# Archivos de IDE (VSCode, etc.)
+.vscode/
+.idea/
