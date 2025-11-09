@@ -1,13 +1,13 @@
 // src/supabase/functions/server/index.tsx
 // (Versión actualizada con rutas para RECLAMOS)
-
+console.log("--- VERSIÓN ACTUALIZADA DEL SERVIDOR DESPLEGADA (14:37) ---"); // <-- AÑADE ESTA LÍNEA
 import { Hono } from "npm:hono";
 import { cors } from "npm:hono/cors";
 import { logger } from "npm:hono/logger";
 import { createClient, SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import * as kv from "./kv_store.tsx";
 
-const app = new Hono();
+const app = new Hono().basePath('/server');
 
 // Variable para el cliente de Supabase
 let supabaseAdmin: SupabaseClient;

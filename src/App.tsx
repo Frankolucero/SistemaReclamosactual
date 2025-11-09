@@ -201,11 +201,26 @@ export default function App() {
 
   const handleSaveEditedClaim = async (updatedClaim: Claim) => {
     try {
-      await api.updateClaim(updatedClaim.id, updatedClaim);
+      // El componente 'EditarReclamoDialog' pasa el reclamo completo
+      // con la nueva actividad ya incluida en el array 'actividades'.
+      // Necesitamos extraer la *nueva* actividad.
       
-      // Reload claims
-      const { claims: loadedClaims } = await api.getClaims();
-      setClaims(loadedClaims);
+      const originalClaim = claims.find(c => c.id === updatedClaim.id);
+      let newActivity = null;
+
+      if (originalClaim && updatedClaim.actividades.length > originalClaim.actividades.length) {
+        // La nueva actividad es la última en la lista
+        newActivity = updatedClaim.actividades[updatedClaim.actividades.length - 1];
+      }
+
+      // Usamos la nueva función del api.ts que maneja ambas operaciones
+      const { claim: finalClaim } = await api.updateClaimAndAddActivity(updatedClaim, newActivity);
+      
+      // Actualizar el estado local con el reclamo final (que incluye la nueva actividad)
+      // Esto es más eficiente que recargar toda la lista.
+      setClaims(prevClaims => 
+        prevClaims.map(c => (c.id === finalClaim.id ? finalClaim : c))
+      );
       
       setEditingClaim(null);
       toast.success('Reclamo actualizado exitosamente');

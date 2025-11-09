@@ -1,16 +1,72 @@
+// src/lib/api.ts
+// (Versión actualizada para conectar con el backend de Hono/Supabase)
+
 import { User, Claim } from '../types/index';
-import { mockUsers, mockClaims } from './mockData';
 
-// Datos en memoria
-let users: User[] = [...mockUsers];
-let claims: Claim[] = [...mockClaims];
-let claimCounter = claims.length;
-let currentUser: User | null = null;
+// URL base de tu función de Supabase.
+// Usamos el Project ID de tu archivo info.tsx
+const PROJECT_ID = 'awookjslyungvgfgvvwq';
+// El nombre de la carpeta de tu función (la que desplegaste)
+const FUNCTION_NAME = 'server'; 
+// El prefijo de tus rutas en Hono
+const ROUTE_PREFIX = 'make-server-5a662287'; 
 
-// Simular delay de red
-const delay = (ms: number = 300) => new Promise(resolve => setTimeout(resolve, ms));
+const API_BASE_URL = `https://${PROJECT_ID}.supabase.co/functions/v1/${FUNCTION_NAME}/${ROUTE_PREFIX}`;
 
-// ===== AUTH API =====
+// ===== AUTH HELPERS =====
+
+// Obtiene el token de la sesión actual (Supabase lo guarda en localStorage)
+function getAuthToken(): string | null {
+  // Supabase guarda la sesión bajo una clave específica
+  const sessionKey = Object.keys(localStorage).find(key => key.startsWith('sb-') && key.endsWith('-auth-token'));
+  if (!sessionKey) return null;
+  
+  const sessionData = localStorage.getItem(sessionKey);
+  if (!sessionData) return null;
+  
+  try {
+    const parsed = JSON.parse(sessionData);
+    return parsed.access_token || null;
+  } catch (e) {
+    console.error("Error parsing auth token:", e);
+    return null;
+  }
+}
+
+// Un wrapper para fetch que añade automáticamente el token
+async function fetchApi(path: string, options: RequestInit = {}) {
+  const token = getAuthToken();
+  const headers = new Headers(options.headers || {});
+  
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`);
+  }
+  
+  if (options.body) {
+    headers.set('Content-Type', 'application/json');
+  }
+
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    ...options,
+    headers,
+  });
+
+  // Intenta parsear la respuesta como JSON
+  const responseData = await response.json().catch(() => {
+    // Si falla el parseo (ej. 500 error), devuelve un error genérico
+    return { error: `Error del servidor: ${response.statusText}` };
+  });
+
+  if (!response.ok) {
+    console.error(`Error en ${options.method || 'GET'} ${path}:`, responseData);
+    // Usa el mensaje de error del backend si existe, si no, usa el statusText
+    throw new Error(responseData.error || `Error en el servidor: ${response.statusText}`);
+  }
+  
+  return responseData;
+}
+
+// ===== AUTH API (Ahora usa el backend real) =====
 
 export async function signup(data: {
   email: string;
@@ -21,245 +77,144 @@ export async function signup(data: {
   role: string;
   area?: string;
 }) {
-  await delay();
-  
-  // Verificar si el email ya existe
-  if (users.find(u => u.email === data.email)) {
-    throw new Error('El email ya está registrado');
-  }
-  
-  const newUser: User = {
-    id: String(users.length + 1),
-    nombre: data.nombre,
-    apellido: data.apellido,
-    telefono: data.telefono,
-    email: data.email,
-    role: data.role as any,
-    area: data.area,
-    accountStatus: 'pending' // Requiere aprobación
-  };
-  
-  users.push(newUser);
-  
-  return {
-    message: 'Cuenta creada. Esperando aprobación del moderador.',
-    user: newUser
-  };
+  return fetchApi('/signup', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
 }
 
 export async function login(email: string, password: string) {
-  await delay();
+  const data = await fetchApi('/login', {
+    method: 'POST',
+    body: JSON.stringify({ email, password }),
+  });
   
-  const user = users.find(u => u.email === email);
-  
-  if (!user) {
-    throw new Error('Credenciales inválidas');
+  // Guardar el token (Supabase ya lo hace, pero para estar seguros)
+  if (data.session?.access_token) {
+     const sessionKey = `sb-${PROJECT_ID}-auth-token`;
+     localStorage.setItem(sessionKey, JSON.stringify(data.session));
   }
-  
-  // Verificar credenciales hardcoded para usuarios de prueba
-  const validCredentials = [
-    { email: 'juan.perez@villamercedes.gob.ar', password: 'admin123' },
-    { email: 'maria.gonzalez@villamercedes.gob.ar', password: 'externo123' },
-    { email: 'carlos.rodriguez@villamercedes.gob.ar', password: 'externo123' }
-  ];
-  
-  const isValidCredential = validCredentials.find(
-    c => c.email === email && c.password === password
-  );
-  
-  if (!isValidCredential && password !== 'demo123') {
-    throw new Error('Credenciales inválidas');
-  }
-  
-  // Verificar si la cuenta está activa
-  if (user.accountStatus !== 'active') {
-    throw new Error('Cuenta no activada. Esperando aprobación del moderador.');
-  }
-  
-  currentUser = user;
-  
-  return {
-    session: { access_token: 'mock-token' },
-    user
-  };
+  return data; // Devuelve { session, user }
 }
 
 export async function getSession() {
-  await delay(100);
-  
-  if (!currentUser) {
+  const token = getAuthToken();
+  if (!token) {
     return { session: null, user: null };
   }
   
-  return {
-    session: { access_token: 'mock-token' },
-    user: currentUser
-  };
+  try {
+    // Usamos el endpoint /session que valida nuestro token
+    return await fetchApi('/session', { method: 'GET' });
+  } catch (e) {
+    console.warn("Error validando sesión:", e);
+    // Si el token es inválido, el backend devolverá un error.
+    // Limpiamos el token viejo.
+    Object.keys(localStorage).forEach(key => {
+      if (key.startsWith('sb-')) {
+        localStorage.removeItem(key);
+      }
+    });
+    return { session: null, user: null };
+  }
 }
 
 export async function logout() {
-  await delay(100);
-  currentUser = null;
-  return { message: 'Sesión cerrada' };
+  // El backend no hace nada, solo limpiamos el storage local
+  Object.keys(localStorage).forEach(key => {
+    if (key.startsWith('sb-')) {
+      localStorage.removeItem(key);
+    }
+  });
+  // Devolvemos una promesa para mantener la consistencia
+  return Promise.resolve({ message: 'Sesión cerrada' });
 }
 
-export function setAuthToken(token: string | null) {
-  // Mock - no hace nada
-}
-
-export function getAuthToken() {
-  return 'mock-token';
-}
-
-// ===== USER API =====
+// ===== USER API (Ahora usa el backend real) =====
 
 export async function getUsers(): Promise<{ users: User[] }> {
-  await delay();
-  return { users: [...users] };
+  return fetchApi('/users', { method: 'GET' });
 }
 
 export async function updateUserStatus(userId: string, accountStatus: string) {
-  await delay();
-  
-  const user = users.find(u => u.id === userId);
-  if (!user) {
-    throw new Error('Usuario no encontrado');
-  }
-  
-  user.accountStatus = accountStatus as any;
-  
-  return { user };
+  return fetchApi(`/users/${userId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ accountStatus }),
+  });
 }
 
-// ===== CLAIM API =====
+// ===== CLAIM API (Ahora usa el backend real) =====
 
 export async function getClaims(): Promise<{ claims: Claim[] }> {
-  await delay();
-  return { claims: [...claims] };
+  return fetchApi('/claims', { method: 'GET' });
 }
 
 export async function getClaimByTrackingNumber(trackingNumber: string): Promise<{ claim: Claim }> {
-  await delay();
-  
-  const claim = claims.find(c => c.numeroSeguimiento === trackingNumber);
-  if (!claim) {
-    throw new Error('Reclamo no encontrado');
-  }
-  
-  return { claim };
+  return fetchApi(`/claims/tracking/${trackingNumber}`, { method: 'GET' });
 }
 
 export async function createClaim(claimData: Partial<Claim>): Promise<{ claim: Claim }> {
-  await delay();
-  
-  claimCounter++;
-  const id = String(claimCounter).padStart(3, '0');
-  const numeroSeguimiento = `VM-2025-${id}`;
-  const now = new Date().toISOString().split('T')[0];
-  
-  const newClaim: Claim = {
-    id,
-    numeroSeguimiento,
-    categoria: claimData.categoria!,
-    descripcion: claimData.descripcion!,
-    calle1: claimData.calle1!,
-    calle2: claimData.calle2,
-    altura: claimData.altura!,
-    barrio: claimData.barrio!,
-    nivelUrgencia: claimData.nivelUrgencia!,
-    estado: claimData.estado || 'pendiente',
-    asignadoA: claimData.asignadoA,
-    areaAsignada: claimData.areaAsignada,
-    fechaCreacion: now,
-    fechaActualizacion: now,
-    actividades: [],
-    archivos: [],
-    comentarios: []
-  };
-  
-  claims.push(newClaim);
-  
-  return { claim: newClaim };
+  return fetchApi('/claims', {
+    method: 'POST',
+    body: JSON.stringify(claimData),
+  });
 }
 
 export async function updateClaim(claimId: string, updates: Partial<Claim>): Promise<{ claim: Claim }> {
-  await delay();
-  
-  const claim = claims.find(c => c.id === claimId);
-  if (!claim) {
-    throw new Error('Reclamo no encontrado');
-  }
-  
-  const now = new Date().toISOString().split('T')[0];
-  
-  Object.assign(claim, updates, {
-    fechaActualizacion: now
+  // El backend maneja la adición de actividades por separado.
+  const claimUpdates = { ...updates };
+  // No enviar el array de actividades
+  delete (claimUpdates as any).actividades; 
+
+  return fetchApi(`/claims/${claimId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(claimUpdates),
   });
-  
-  return { claim };
 }
 
 export async function deleteClaim(claimId: string) {
-  await delay();
-  
-  const index = claims.findIndex(c => c.id === claimId);
-  if (index === -1) {
-    throw new Error('Reclamo no encontrado');
-  }
-  
-  claims.splice(index, 1);
-  
-  return { message: 'Reclamo eliminado' };
+  return fetchApi(`/claims/${claimId}`, {
+    method: 'DELETE',
+  });
 }
 
-export async function addActivity(claimId: string, descripcion: string): Promise<{ claim: Claim }> {
-  await delay();
+// Función especial para 'EditarReclamoDialog'
+export async function updateClaimAndAddActivity(updatedClaim: Claim, newActivity: any | null) {
   
-  const claim = claims.find(c => c.id === claimId);
-  if (!claim) {
-    throw new Error('Reclamo no encontrado');
+  // 1. Actualizar el reclamo principal (estado, etc.)
+  await updateClaim(updatedClaim.id, updatedClaim);
+  
+  // 2. Si hay una nueva actividad, añadirla
+  if (newActivity && newActivity.descripcion) {
+    await fetchApi(`/claims/${updatedClaim.id}/activity`, {
+      method: 'POST',
+      body: JSON.stringify(newActivity),
+    });
+  }
+
+  // 3. Devolver el reclamo actualizado
+  // (getClaims es la forma más fácil de obtener la versión más reciente con todo)
+  const { claims } = await getClaims();
+  const finalClaim = claims.find(c => c.id === updatedClaim.id);
+  
+  if (!finalClaim) {
+    throw new Error("No se pudo recargar el reclamo actualizado");
   }
   
-  if (!currentUser) {
-    throw new Error('No autorizado');
-  }
-  
-  const activity = {
-    id: `a${Date.now()}`,
-    descripcion,
-    personal: `${currentUser.nombre} ${currentUser.apellido}`,
-    fecha: new Date().toLocaleString('es-AR', { 
-      year: 'numeric', 
-      month: '2-digit', 
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit'
-    }).replace(',', '')
-  };
-  
-  claim.actividades.push(activity);
-  claim.fechaActualizacion = new Date().toISOString().split('T')[0];
-  
-  return { claim };
+  return { claim: finalClaim };
 }
+
 
 export async function addComment(claimId: string, comentario: string): Promise<{ claim: Claim }> {
-  await delay();
-  
-  const claim = claims.find(c => c.id === claimId);
-  if (!claim) {
-    throw new Error('Reclamo no encontrado');
-  }
-  
-  claim.comentarios.push(comentario);
-  claim.fechaActualizacion = new Date().toISOString().split('T')[0];
-  
-  return { claim };
+  return fetchApi(`/claims/${claimId}/comment`, {
+    method: 'POST',
+    body: JSON.stringify({ comentario }),
+  });
 }
 
 // ===== STATS API =====
-
 export async function getStats(): Promise<{ claims: Claim[] }> {
-  await delay();
-  return { claims: [...claims] };
+  // Las estadísticas se calculan en el frontend,
+  // así que solo necesitamos los reclamos.
+  return getClaims();
 }
