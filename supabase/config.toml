@@ -1,0 +1,2 @@
+[functions.server]
+entrypoint = "../src/supabase/functions/server/index.tsx"
