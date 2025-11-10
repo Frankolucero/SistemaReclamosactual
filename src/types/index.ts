@@ -1,3 +1,6 @@
+// src/types/index.ts
+// (Versión ACTUALIZADA)
+
 export type UserRole = 'moderador' | 'externo' | 'usuario';
 
 export type ClaimStatus = 'pendiente' | 'asignado' | 'en_proceso' | 'resuelto' | 'cerrado';
@@ -30,6 +33,16 @@ export interface Activity {
   descripcion: string;
   personal: string;
   fecha: string;
+  claim_id?: number; // Opcional, viene de la DB
+}
+
+// ¡NUEVA INTERFAZ PARA COMENTARIOS!
+export interface Comment {
+  id: string;
+  claim_id: number;
+  texto: string;
+  fechaCreacion: string;
+  autor_id?: string;
 }
 
 export interface Claim {
@@ -50,5 +63,5 @@ export interface Claim {
   fechaActualizacion: string;
   actividades: Activity[];
   archivos?: string[];
-  comentarios?: string[];
+  comentarios?: Comment[]; // ¡ACTUALIZADO!
 }
