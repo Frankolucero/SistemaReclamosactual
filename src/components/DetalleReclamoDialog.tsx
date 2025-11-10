@@ -167,9 +167,12 @@ export function DetalleReclamoDialog({ claim, isOpen, onClose }: DetalleReclamoD
               <div>
                 <h3 className="text-gray-900 mb-3">Comentarios</h3>
                 <div className="space-y-2">
-                  {claim.comentarios.map((comentario, idx) => (
-                    <div key={idx} className="bg-yellow-50 p-3 rounded-lg border border-yellow-200">
-                      <p className="text-sm text-gray-700">{comentario}</p>
+                  {/* ¡CAMBIO AQUÍ! */}
+                  {claim.comentarios.map((comentario) => (
+                    <div key={comentario.id} className="bg-yellow-50 p-3 rounded-lg border border-yellow-200">
+                      <p className="text-sm text-gray-700">{comentario.texto}</p>
+                      {/* Opcional: mostrar fecha */}
+                      <p className="text-xs text-gray-500 mt-1">{new Date(comentario.fechaCreacion).toLocaleString('es-AR')}</p>
                     </div>
                   ))}
                 </div>
